@@ -203,7 +203,7 @@ class ProfileScreen extends StatelessWidget {
             },
           ),
           _buildSettingItem(
-            icon: LucideIcons.language,
+            icon: LucideIcons.globe,
             title: '언어 설정',
             subtitle: '한국어',
             onTap: () {

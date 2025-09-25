@@ -179,7 +179,7 @@ class _GameSettlementScreenState extends State<GameSettlementScreen> {
               ),
               const SizedBox(height: AppTheme.spacingS),
               TextField(
-                initialValue: _stakeAmount.toString(),
+                controller: TextEditingController(text: _stakeAmount.toString()),
                 decoration: const InputDecoration(
                   hintText: '판별당 금액을 입력하세요',
                   suffixText: '원',

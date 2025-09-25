@@ -499,7 +499,7 @@ class _ExpenseDialogState extends State<_ExpenseDialog> {
                 labelText: '결제자',
               ),
               items: widget.participants
-                  .map((participant) => DropdownMenuItem(
+                  .map((participant) => DropdownMenuItem<String>(
                         value: participant['name'],
                         child: Text(participant['name']),
                       ))
