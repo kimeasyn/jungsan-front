@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../screens/home_screen.dart';
 import '../screens/travel_settlement_screen.dart';
-import '../screens/game_settlement_screen.dart';
+import '../screens/game_settlement_main_screen.dart';
 import '../screens/settlement_result_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/profile_screen.dart';
@@ -36,7 +36,7 @@ class AppRouter {
       GoRoute(
         path: gameSettlement,
         name: 'game-settlement',
-        builder: (context, state) => const GameSettlementScreen(),
+        builder: (context, state) => const GameSettlementMainScreen(),
       ),
       
       // Settlement Result Route
