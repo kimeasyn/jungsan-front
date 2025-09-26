@@ -8,9 +8,62 @@ import '../widgets/common/app_button.dart';
 import '../widgets/common/app_card.dart';
 import '../widgets/layout/app_scaffold.dart';
 import '../routes/app_router.dart';
+import '../services/game_api_service.dart';
+import '../services/travel_api_service.dart';
+import '../services/api_service.dart';
+import '../models/api_models.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  List<GameApi> _recentGames = [];
+  List<TravelSettlementApi> _recentTravelSettlements = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecentSettlements();
+  }
+
+  Future<void> _loadRecentSettlements() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // 게임 정산과 여행 정산을 병렬로 로드
+      final futures = await Future.wait([
+        GameApiService.getGames(),
+        TravelApiService.getTravelSettlements(),
+      ]);
+
+      final gamesResponse = futures[0] as ApiResponse<List<GameApi>>;
+      final travelResponse = futures[1] as ApiResponse<List<TravelSettlementApi>>;
+
+      setState(() {
+        if (gamesResponse.isSuccess) {
+          _recentGames = gamesResponse.data ?? [];
+        }
+        if (travelResponse.isSuccess) {
+          _recentTravelSettlements = travelResponse.data ?? [];
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = '데이터를 불러오는 중 오류가 발생했습니다: $e';
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,6 +73,11 @@ class HomeScreen extends StatelessWidget {
         IconButton(
           onPressed: () => context.go(AppRouter.history),
           icon: const Icon(LucideIcons.history),
+        ),
+        IconButton(
+          onPressed: () => context.go(AppRouter.apiTest),
+          icon: const Icon(LucideIcons.wifi),
+          tooltip: 'API 테스트',
         ),
         IconButton(
           onPressed: () => context.go(AppRouter.profile),
@@ -170,10 +228,12 @@ class HomeScreen extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '최근 정산 내역',
-              style: AppTypography.h3.copyWith(
-                color: AppColors.textPrimary,
+            Expanded(
+              child: Text(
+                '최근 정산 내역',
+                style: AppTypography.h3.copyWith(
+                  color: AppColors.textPrimary,
+                ),
               ),
             ),
             TextButton(
@@ -194,40 +254,60 @@ class HomeScreen extends StatelessWidget {
   }
 
   Widget _buildRecentSettlementsList(BuildContext context) {
-    // 임시 데이터 - 실제로는 상태 관리에서 가져와야 함
-    final recentSettlements = [
-      {
-        'title': '제주도 여행',
-        'type': '여행',
-        'amount': 450000,
-        'participants': 4,
-        'date': '2024-01-15',
-        'status': '완료',
-      },
-      {
-        'title': '포커 게임',
-        'type': '게임',
-        'amount': 120000,
-        'participants': 6,
-        'date': '2024-01-12',
-        'status': '완료',
-      },
-      {
-        'title': '부산 여행',
-        'type': '여행',
-        'amount': 320000,
-        'participants': 3,
-        'date': '2024-01-10',
-        'status': '진행중',
-      },
-    ];
+    if (_isLoading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(AppTheme.spacingXL),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
 
-    if (recentSettlements.isEmpty) {
+    if (_errorMessage != null) {
+      return _buildErrorState(context);
+    }
+
+    // 게임과 여행 정산을 합쳐서 최근 순으로 정렬
+    final allSettlements = <Map<String, dynamic>>[];
+    
+    // 게임 정산 추가
+    for (final game in _recentGames.take(3)) {
+      allSettlements.add({
+        'id': game.id,
+        'title': game.title,
+        'type': '게임',
+        'amount': 0, // 게임은 라운드별로 금액이 다름
+        'participants': game.participants.length,
+        'date': game.createdAt?.toIso8601String().substring(0, 10) ?? '날짜 없음',
+        'status': game.status == GameStatusApi.completed ? '완료' : '진행중',
+        'game': game,
+      });
+    }
+    
+    // 여행 정산 추가
+    for (final travel in _recentTravelSettlements.take(3)) {
+      allSettlements.add({
+        'id': travel.id,
+        'title': travel.title,
+        'type': '여행',
+        'amount': travel.totalAmount,
+        'participants': 0, // 여행 정산은 참가자 수가 다름
+        'date': travel.createdAt.toIso8601String().substring(0, 10),
+        'status': travel.status == GameStatusApi.completed ? '완료' : '진행중',
+        'travel': travel,
+      });
+    }
+
+    // 날짜순으로 정렬 (최신순)
+    allSettlements.sort((a, b) => b['date'].compareTo(a['date']));
+
+    if (allSettlements.isEmpty) {
       return _buildEmptyState(context);
     }
 
     return Column(
-      children: recentSettlements
+      children: allSettlements
+          .take(5) // 최대 5개만 표시
           .map((settlement) => _buildSettlementCard(context, settlement))
           .toList(),
     );
@@ -236,13 +316,15 @@ class HomeScreen extends StatelessWidget {
   Widget _buildSettlementCard(BuildContext context, Map<String, dynamic> settlement) {
     final isCompleted = settlement['status'] == '완료';
     final typeColor = settlement['type'] == '여행' ? AppColors.primary : AppColors.secondary;
+    final amount = settlement['amount'] as double;
+    final participants = settlement['participants'] as int;
     
     return AppCard(
       margin: const EdgeInsets.only(bottom: AppTheme.spacingM),
       onTap: () {
         // 정산 상세 페이지로 이동
         if (isCompleted) {
-          context.go('${AppRouter.settlementResult}/1');
+          context.go('${AppRouter.settlementResult}/${settlement['id']}');
         }
       },
       isClickable: isCompleted,
@@ -274,7 +356,9 @@ class HomeScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${settlement['participants']}명 • ${settlement['date']}',
+                  participants > 0 
+                      ? '${participants}명 • ${settlement['date']}'
+                      : settlement['date'],
                   style: AppTypography.caption.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -285,16 +369,25 @@ class HomeScreen extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(
-                '${settlement['amount'].toString().replaceAllMapped(
-                  RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-                  (Match m) => '${m[1]},',
-                )}원',
-                style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
+              if (amount > 0)
+                Text(
+                  '${amount.toStringAsFixed(0).replaceAllMapped(
+                    RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+                    (Match m) => '${m[1]},',
+                  )}원',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else
+                Text(
+                  '게임',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
               const SizedBox(height: 4),
               Container(
                 padding: const EdgeInsets.symmetric(
@@ -342,6 +435,42 @@ class HomeScreen extends StatelessWidget {
             style: AppTypography.caption.copyWith(
               color: AppColors.textTertiary,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(BuildContext context) {
+    return AppCard(
+      child: Column(
+        children: [
+          Icon(
+            LucideIcons.alertCircle,
+            size: 48,
+            color: AppColors.error,
+          ),
+          const SizedBox(height: AppTheme.spacingM),
+          Text(
+            '데이터를 불러올 수 없습니다',
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: AppTheme.spacingS),
+          Text(
+            _errorMessage ?? '알 수 없는 오류가 발생했습니다',
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textTertiary,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: AppTheme.spacingM),
+          AppButton(
+            text: '다시 시도',
+            type: AppButtonType.outline,
+            size: AppButtonSize.small,
+            onPressed: _loadRecentSettlements,
           ),
         ],
       ),

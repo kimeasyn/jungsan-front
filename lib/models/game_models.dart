@@ -57,6 +57,40 @@ class Game extends Equatable {
     );
   }
 
+  // JSON 직렬화
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'participants': participants.map((p) => p.toJson()).toList(),
+      'rounds': rounds.map((r) => r.toJson()).toList(),
+      'status': status.name,
+      'createdAt': createdAt.toIso8601String(),
+      'completedAt': completedAt?.toIso8601String(),
+    };
+  }
+
+  factory Game.fromJson(Map<String, dynamic> json) {
+    return Game(
+      id: json['id'] as String,
+      title: json['title'] as String,
+      participants: (json['participants'] as List<dynamic>)
+          .map((p) => Participant.fromJson(p as Map<String, dynamic>))
+          .toList(),
+      rounds: (json['rounds'] as List<dynamic>)
+          .map((r) => GameRound.fromJson(r as Map<String, dynamic>))
+          .toList(),
+      status: GameStatus.values.firstWhere(
+        (e) => e.name == json['status'],
+        orElse: () => GameStatus.inProgress,
+      ),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+      completedAt: json['completedAt'] != null 
+          ? DateTime.parse(json['completedAt'] as String)
+          : null,
+    );
+  }
+
   // 게임이 완료되었는지 확인
   bool get isCompleted => status == GameStatus.completed;
 
@@ -97,6 +131,24 @@ class Participant extends Equatable {
       name: name ?? this.name,
       avatar: avatar ?? this.avatar,
       isActive: isActive ?? this.isActive,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'avatar': avatar,
+      'isActive': isActive,
+    };
+  }
+
+  factory Participant.fromJson(Map<String, dynamic> json) {
+    return Participant(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      avatar: json['avatar'] as String?,
+      isActive: json['isActive'] as bool? ?? true,
     );
   }
 }
@@ -148,6 +200,28 @@ class GameRound extends Equatable {
       orElse: () => const Participant(id: '', name: '알 수 없음'),
     );
     return winner.name;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'roundNumber': roundNumber,
+      'winnerId': winnerId,
+      'payments': payments.map((p) => p.toJson()).toList(),
+      'createdAt': createdAt.toIso8601String(),
+    };
+  }
+
+  factory GameRound.fromJson(Map<String, dynamic> json) {
+    return GameRound(
+      id: json['id'] as String,
+      roundNumber: json['roundNumber'] as int,
+      winnerId: json['winnerId'] as String,
+      payments: (json['payments'] as List<dynamic>)
+          .map((p) => Payment.fromJson(p as Map<String, dynamic>))
+          .toList(),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
   }
 }
 
@@ -202,6 +276,26 @@ class Payment extends Equatable {
       orElse: () => const Participant(id: '', name: '알 수 없음'),
     );
     return recipient.name;
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'payerId': payerId,
+      'recipientId': recipientId,
+      'amount': amount,
+      'memo': memo,
+    };
+  }
+
+  factory Payment.fromJson(Map<String, dynamic> json) {
+    return Payment(
+      id: json['id'] as String,
+      payerId: json['payerId'] as String,
+      recipientId: json['recipientId'] as String,
+      amount: (json['amount'] as num).toDouble(),
+      memo: json['memo'] as String?,
+    );
   }
 }
 

@@ -8,6 +8,10 @@ import '../widgets/common/app_card.dart';
 import '../widgets/layout/app_scaffold.dart';
 import '../models/game_models.dart';
 import '../services/settlement_calculator.dart';
+import '../services/local_storage_service.dart';
+import '../services/game_api_service.dart';
+import '../services/api_service.dart';
+import '../models/api_models.dart';
 import 'game_settlement_result_screen.dart';
 import 'game_participants_screen.dart';
 
@@ -418,7 +422,7 @@ class _GameRoundsScreenState extends State<GameRoundsScreen> {
     );
   }
 
-  void _completeGame() {
+  void _completeGame() async {
     setState(() {
       _currentGame = _currentGame.copyWith(
         status: GameStatus.completed,
@@ -426,7 +430,118 @@ class _GameRoundsScreenState extends State<GameRoundsScreen> {
       );
     });
 
+    // 게임 완료 시 로컬과 백엔드에 저장
+    await _saveCompletedGame();
+
     Navigator.of(context).pop(_currentGame);
+  }
+
+  Future<void> _saveCompletedGame() async {
+    try {
+      // 백엔드 API에 게임 완료 상태 저장
+      if (!_currentGame.id.startsWith('temp-')) {
+        // 실제 백엔드 게임인 경우
+        try {
+          await GameApiService.updateGame(
+            _currentGame.id,
+            title: _currentGame.title,
+            status: GameStatusApi.completed,
+          );
+          print('게임 완료 상태가 백엔드 DB에 저장되었습니다');
+        } catch (e) {
+          print('백엔드 저장 실패: $e');
+          // 백엔드 저장 실패 시에도 로컬에 백업 저장
+          await LocalStorageService.saveCompletedGame(_currentGame);
+          print('백엔드 저장 실패로 로컬에 백업 저장됨');
+        }
+      } else {
+        // 로컬 모드로 생성된 게임인 경우 - 백엔드에 새로 생성
+        try {
+          // 1. 게임 생성
+          final gameResponse = await GameApiService.createGame(
+            title: _currentGame.title,
+          );
+          
+          if (gameResponse.isSuccess && gameResponse.data != null) {
+            final newGameId = gameResponse.data!.id;
+            
+            // 2. 참가자들을 백엔드에 생성하고 게임에 추가
+            for (final participant in _currentGame.participants) {
+              try {
+                final participantResponse = await GameApiService.createParticipant(
+                  name: participant.name,
+                  avatar: participant.avatar,
+                );
+                
+                if (participantResponse.isSuccess && participantResponse.data != null) {
+                  await GameApiService.addParticipantToGame(
+                    newGameId, 
+                    participantResponse.data!.id,
+                  );
+                }
+              } catch (e) {
+                print('참가자 생성 실패: $e');
+              }
+            }
+            
+            // 3. 라운드와 지급 내역을 백엔드에 저장
+            for (final round in _currentGame.rounds) {
+              try {
+                final roundResponse = await GameApiService.createRound(
+                  newGameId,
+                  roundNumber: round.roundNumber,
+                  winnerId: round.winnerId,
+                );
+                
+                if (roundResponse.isSuccess && roundResponse.data != null) {
+                  final roundId = roundResponse.data!.id;
+                  
+                  // 지급 내역 저장
+                  for (final payment in round.payments) {
+                    try {
+                      await GameApiService.createPayment(
+                        roundId,
+                        payerId: payment.payerId,
+                        recipientId: payment.recipientId,
+                        amount: payment.amount,
+                        memo: payment.memo,
+                      );
+                    } catch (e) {
+                      print('지급 내역 생성 실패: $e');
+                    }
+                  }
+                }
+              } catch (e) {
+                print('라운드 생성 실패: $e');
+              }
+            }
+            
+            // 4. 게임 완료 상태로 업데이트
+            await GameApiService.updateGame(
+              newGameId,
+              title: _currentGame.title,
+              status: GameStatusApi.completed,
+            );
+            
+            print('로컬 게임이 백엔드 DB에 성공적으로 저장되었습니다');
+          } else {
+            throw Exception('게임 생성 실패: ${gameResponse.errorMessage}');
+          }
+        } catch (e) {
+          print('백엔드 저장 실패, 로컬에 백업 저장: $e');
+          await LocalStorageService.saveCompletedGame(_currentGame);
+        }
+      }
+    } catch (e) {
+      print('게임 완료 저장 실패: $e');
+      // 최종적으로 로컬에라도 저장
+      try {
+        await LocalStorageService.saveCompletedGame(_currentGame);
+        print('로컬에 백업 저장됨');
+      } catch (localError) {
+        print('로컬 저장도 실패: $localError');
+      }
+    }
   }
 }
 
@@ -495,6 +610,15 @@ class _RoundDialogState extends State<_RoundDialog> {
                 onChanged: (value) {
                   setState(() {
                     _selectedWinnerId = value;
+                    // 승자가 변경되면 기존 입력값 초기화
+                    if (value != null) {
+                      for (final participant in widget.participants) {
+                        if (participant.id != value) {
+                          _amountControllers[participant.id]?.clear();
+                          _memoControllers[participant.id]?.clear();
+                        }
+                      }
+                    }
                   });
                 },
               ),
@@ -531,14 +655,25 @@ class _RoundDialogState extends State<_RoundDialog> {
   }
 
   Widget _buildPaymentField(Participant participant, bool isWinner) {
+    final isWinnerSelected = _selectedWinnerId != null;
+    final isDisabled = !isWinnerSelected && !isWinner;
+    
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isWinner ? AppColors.warning.withOpacity(0.1) : AppColors.neutralLight,
+        color: isWinner 
+            ? AppColors.warning.withOpacity(0.1) 
+            : isDisabled 
+                ? AppColors.neutralLight.withOpacity(0.5)
+                : AppColors.neutralLight,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isWinner ? AppColors.warning : AppColors.border,
+          color: isWinner 
+              ? AppColors.warning 
+              : isDisabled 
+                  ? AppColors.border.withOpacity(0.5)
+                  : AppColors.border,
         ),
       ),
       child: Column(
@@ -549,7 +684,9 @@ class _RoundDialogState extends State<_RoundDialog> {
               Text(
                 participant.name,
                 style: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.textPrimary,
+                  color: isDisabled 
+                      ? AppColors.textTertiary 
+                      : AppColors.textPrimary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -576,19 +713,27 @@ class _RoundDialogState extends State<_RoundDialog> {
             const SizedBox(height: 8),
             TextField(
               controller: _amountControllers[participant.id],
-              decoration: const InputDecoration(
+              enabled: isWinnerSelected,
+              decoration: InputDecoration(
                 labelText: '지급 금액',
-                hintText: '0',
+                hintText: isWinnerSelected ? '0' : '승자를 먼저 선택하세요',
                 suffixText: '원',
+                hintStyle: TextStyle(
+                  color: AppColors.textTertiary,
+                ),
               ),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _memoControllers[participant.id],
-              decoration: const InputDecoration(
+              enabled: isWinnerSelected,
+              decoration: InputDecoration(
                 labelText: '메모 (선택사항)',
-                hintText: '메모를 입력하세요',
+                hintText: isWinnerSelected ? '메모를 입력하세요' : '승자를 먼저 선택하세요',
+                hintStyle: TextStyle(
+                  color: AppColors.textTertiary,
+                ),
               ),
             ),
           ],

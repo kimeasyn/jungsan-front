@@ -6,6 +6,7 @@ import '../screens/game_settlement_main_screen.dart';
 import '../screens/settlement_result_screen.dart';
 import '../screens/history_screen.dart';
 import '../screens/profile_screen.dart';
+import '../screens/api_test_screen.dart';
 
 class AppRouter {
   static const String home = '/';
@@ -14,6 +15,7 @@ class AppRouter {
   static const String settlementResult = '/settlement-result';
   static const String history = '/history';
   static const String profile = '/profile';
+  static const String apiTest = '/api-test';
   
   static final GoRouter router = GoRouter(
     initialLocation: home,
@@ -61,6 +63,13 @@ class AppRouter {
         path: profile,
         name: 'profile',
         builder: (context, state) => const ProfileScreen(),
+      ),
+      
+      // API Test Route
+      GoRoute(
+        path: apiTest,
+        name: 'api-test',
+        builder: (context, state) => const ApiTestScreen(),
       ),
     ],
     

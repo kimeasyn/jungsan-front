@@ -8,6 +8,9 @@ import '../widgets/common/app_card.dart';
 import '../widgets/common/app_input.dart';
 import '../widgets/layout/app_scaffold.dart';
 import '../models/game_models.dart';
+import '../models/api_models.dart';
+import '../services/game_api_service.dart';
+import '../services/api_service.dart';
 import 'game_rounds_screen.dart';
 
 class GameParticipantsScreen extends StatefulWidget {
@@ -222,7 +225,7 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
     });
   }
 
-  void _proceedToRounds() {
+  void _proceedToRounds() async {
     if (_participants.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -241,23 +244,90 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
       return;
     }
 
-    final game = widget.game?.copyWith(
-      title: _titleController.text.trim(),
-      participants: _participants,
-    ) ?? Game(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      title: _titleController.text.trim(),
-      participants: _participants,
-      rounds: [],
-      status: GameStatus.inProgress,
-      createdAt: DateTime.now(),
-    );
+    try {
+      // 백엔드 API를 통한 게임 생성
+      final participantIds = <String>[];
+      
+      // 1. 참가자들을 백엔드에 생성
+      for (final participant in _participants) {
+        // 참가자 이름 검증
+        if (participant.name.trim().isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('참가자 이름을 입력해주세요.'),
+            ),
+          );
+          return;
+        }
 
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (context) => GameRoundsScreen(game: game),
-      ),
-    );
+        final response = await GameApiService.createParticipant(
+          name: participant.name,
+          avatar: participant.avatar,
+        );
+        
+        if (response.isSuccess && response.data != null) {
+          participantIds.add(response.data!.id);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('참가자 생성 실패: ${response.errorMessage}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+      }
+
+      // 2. 게임 생성
+      final gameResponse = await GameApiService.createGame(
+        title: _titleController.text.trim(),
+      );
+
+      if (gameResponse.isSuccess && gameResponse.data != null) {
+        final game = gameResponse.data!;
+        
+        // 3. 게임에 참가자들 추가
+        for (final participantId in participantIds) {
+          final addResponse = await GameApiService.addParticipantToGame(game.id, participantId);
+          if (!addResponse.isSuccess) {
+            print('참가자 추가 실패: ${addResponse.errorMessage}');
+            // 참가자 추가 실패해도 게임은 생성되었으므로 계속 진행
+          }
+        }
+
+        // 4. GameApi를 Game 모델로 변환하여 라운드 화면으로 이동
+        final gameModel = Game(
+          id: game.id,
+          title: game.title,
+          participants: _participants,
+          rounds: [],
+          status: GameStatus.inProgress,
+          createdAt: game.createdAt ?? DateTime.now(),
+        );
+
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => GameRoundsScreen(game: gameModel),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('게임 생성 실패: ${gameResponse.errorMessage}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('게임 생성 중 오류가 발생했습니다: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
   }
 
   @override

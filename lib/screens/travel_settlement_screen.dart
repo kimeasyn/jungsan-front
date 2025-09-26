@@ -6,6 +6,9 @@ import '../theme/app_theme.dart';
 import '../widgets/common/app_button.dart';
 import '../widgets/common/app_card.dart';
 import '../widgets/layout/app_scaffold.dart';
+import '../services/travel_api_service.dart';
+import '../services/api_service.dart';
+import '../models/api_models.dart';
 
 class TravelSettlementScreen extends StatefulWidget {
   const TravelSettlementScreen({super.key});
@@ -17,6 +20,9 @@ class TravelSettlementScreen extends StatefulWidget {
 class _TravelSettlementScreenState extends State<TravelSettlementScreen> {
   final List<Map<String, dynamic>> _participants = [];
   final List<Map<String, dynamic>> _expenses = [];
+  final TextEditingController _titleController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +33,10 @@ class _TravelSettlementScreenState extends State<TravelSettlementScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 여행 제목 입력
+            _buildTitleSection(),
+            const SizedBox(height: AppTheme.spacingXL),
+            
             // 참가자 섹션
             _buildParticipantsSection(),
             const SizedBox(height: AppTheme.spacingXL),
@@ -41,6 +51,28 @@ class _TravelSettlementScreenState extends State<TravelSettlementScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildTitleSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '여행 제목',
+          style: AppTypography.h3.copyWith(
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: AppTheme.spacingM),
+        TextField(
+          controller: _titleController,
+          decoration: const InputDecoration(
+            hintText: '여행 제목을 입력하세요',
+            border: OutlineInputBorder(),
+          ),
+        ),
+      ],
     );
   }
 
@@ -294,12 +326,12 @@ class _TravelSettlementScreenState extends State<TravelSettlementScreen> {
 
   Widget _buildSettlementButton() {
     return AppButton(
-      text: '정산하기',
+      text: _isLoading ? '저장 중...' : '정산하기',
       type: AppButtonType.primary,
       size: AppButtonSize.large,
       isFullWidth: true,
       icon: LucideIcons.calculator,
-      onPressed: _calculateSettlement,
+      onPressed: _isLoading ? null : _calculateSettlement,
     );
   }
 
@@ -354,13 +386,105 @@ class _TravelSettlementScreenState extends State<TravelSettlementScreen> {
     });
   }
 
-  void _calculateSettlement() {
-    // TODO: 정산 계산 로직 구현
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('정산 계산 기능은 곧 구현됩니다'),
-      ),
-    );
+  void _calculateSettlement() async {
+    if (_titleController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('여행 제목을 입력해주세요'),
+        ),
+      );
+      return;
+    }
+
+    if (_participants.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('최소 1명의 참가자가 필요합니다'),
+        ),
+      );
+      return;
+    }
+
+    if (_expenses.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('최소 1개의 비용을 입력해주세요'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      // 총 금액 계산
+      final totalAmount = _expenses.fold<double>(
+        0.0,
+        (sum, expense) => sum + (expense['amount'] as double),
+      );
+
+      // 여행 정산 생성
+      final response = await TravelApiService.createTravelSettlement(
+        title: _titleController.text.trim(),
+        totalAmount: totalAmount,
+      );
+
+      if (response.isSuccess && response.data != null) {
+        final settlement = response.data!;
+        
+        // 비용들을 여행 정산에 추가
+        for (final expense in _expenses) {
+          await TravelApiService.createTravelExpense(
+            settlement.id,
+            participantId: 'temp-participant-id', // 실제로는 참가자 ID를 사용해야 함
+            amount: expense['amount'] as double,
+            description: expense['title'] as String,
+          );
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('여행 정산이 생성되었습니다'),
+          ),
+        );
+
+        // 홈 화면으로 돌아가기
+        Navigator.of(context).pop();
+      } else {
+        setState(() {
+          _errorMessage = response.errorMessage ?? '여행 정산 생성에 실패했습니다';
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_errorMessage!),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = '오류가 발생했습니다: $e';
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_errorMessage!),
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    super.dispose();
   }
 }
 
