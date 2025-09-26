@@ -9,6 +9,7 @@ import '../widgets/layout/app_scaffold.dart';
 import '../models/game_models.dart';
 import '../services/settlement_calculator.dart';
 import 'game_settlement_result_screen.dart';
+import 'game_participants_screen.dart';
 
 class GameRoundsScreen extends StatefulWidget {
   final Game game;
@@ -33,29 +34,42 @@ class _GameRoundsScreenState extends State<GameRoundsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScaffold(
-      title: _currentGame.title,
-      actions: [
-        if (_currentGame.rounds.isNotEmpty)
-          IconButton(
-            onPressed: _showSettlementResult,
-            icon: const Icon(LucideIcons.calculator),
-            tooltip: '정산 결과 보기',
+    return WillPopScope(
+      onWillPop: () async {
+        // 참가자 설정 화면으로 이동
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => GameParticipantsScreen(
+              game: _currentGame,
+            ),
           ),
-      ],
-      body: Column(
-        children: [
-          // 게임 정보
-          _buildGameInfo(),
-          
-          // 라운드 목록
-          Expanded(
-            child: _buildRoundsList(),
-          ),
-          
-          // 하단 버튼들
-          _buildBottomButtons(),
+        );
+        return false;
+      },
+      child: AppScaffold(
+        title: '${_currentGame.title} 관리',
+        actions: [
+          if (_currentGame.rounds.isNotEmpty)
+            IconButton(
+              onPressed: _showSettlementResult,
+              icon: const Icon(LucideIcons.calculator),
+              tooltip: '정산 결과 보기',
+            ),
         ],
+        body: Column(
+          children: [
+            // 게임 정보
+            _buildGameInfo(),
+            
+            // 라운드 목록
+            Expanded(
+              child: _buildRoundsList(),
+            ),
+            
+            // 하단 버튼들
+            _buildBottomButtons(),
+          ],
+        ),
       ),
     );
   }
@@ -459,7 +473,7 @@ class _RoundDialogState extends State<_RoundDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('${widget.roundNumber}라운드 설정'),
+      title: Text('${widget.roundNumber}라운드 관리'),
       content: SizedBox(
         width: double.maxFinite,
         child: SingleChildScrollView(

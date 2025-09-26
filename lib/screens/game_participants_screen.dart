@@ -11,39 +11,30 @@ import '../models/game_models.dart';
 import 'game_rounds_screen.dart';
 
 class GameParticipantsScreen extends StatefulWidget {
-  const GameParticipantsScreen({super.key});
+  final Game? game;
+  
+  const GameParticipantsScreen({super.key, this.game});
 
   @override
   State<GameParticipantsScreen> createState() => _GameParticipantsScreenState();
 }
 
 class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
-  final List<Participant> _participants = [];
-  final TextEditingController _titleController = TextEditingController();
+  late List<Participant> _participants;
+  late TextEditingController _titleController;
 
   @override
   void initState() {
     super.initState();
-    _titleController.text = '새 게임';
+    _participants = widget.game?.participants ?? [];
+    _titleController = TextEditingController(text: widget.game?.title ?? '새 게임');
   }
 
   @override
   Widget build(BuildContext context) {
     return AppScaffold(
       title: '참가자 설정',
-      actions: [
-        if (_participants.length >= 2)
-          TextButton(
-            onPressed: _proceedToRounds,
-            child: Text(
-              '다음',
-              style: AppTypography.bodyMedium.copyWith(
-                color: AppColors.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-      ],
+      actions: [],
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppTheme.spacingM),
         child: Column(
@@ -57,8 +48,6 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
             _buildParticipantsSection(),
             const SizedBox(height: AppTheme.spacingXL),
             
-            // 다음 버튼
-            if (_participants.length >= 2) _buildNextButton(),
           ],
         ),
       ),
@@ -116,6 +105,19 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
           _buildEmptyParticipants()
         else
           _buildParticipantsList(),
+        
+        // 라운드 설정 버튼
+        if (_participants.length >= 2) ...[
+          const SizedBox(height: AppTheme.spacingM),
+          AppButton(
+            text: '라운드 설정',
+            type: AppButtonType.primary,
+            size: AppButtonSize.large,
+            isFullWidth: true,
+            icon: LucideIcons.trophy,
+            onPressed: _proceedToRounds,
+          ),
+        ],
       ],
     );
   }
@@ -197,16 +199,6 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
     );
   }
 
-  Widget _buildNextButton() {
-    return AppButton(
-      text: '라운드 설정으로 이동',
-      type: AppButtonType.primary,
-      size: AppButtonSize.large,
-      isFullWidth: true,
-      icon: LucideIcons.arrowRight,
-      onPressed: _proceedToRounds,
-    );
-  }
 
   void _addParticipant() {
     showDialog(
@@ -249,7 +241,10 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
       return;
     }
 
-    final game = Game(
+    final game = widget.game?.copyWith(
+      title: _titleController.text.trim(),
+      participants: _participants,
+    ) ?? Game(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       title: _titleController.text.trim(),
       participants: _participants,
