@@ -32,7 +32,7 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
     return AppScaffold(
       title: '참가자 설정',
       actions: [
-        if (_participants.isNotEmpty)
+        if (_participants.length >= 2)
           TextButton(
             onPressed: _proceedToRounds,
             child: Text(
@@ -58,7 +58,7 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
             const SizedBox(height: AppTheme.spacingXL),
             
             // 다음 버튼
-            if (_participants.isNotEmpty) _buildNextButton(),
+            if (_participants.length >= 2) _buildNextButton(),
           ],
         ),
       ),
@@ -138,7 +138,7 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
           ),
           const SizedBox(height: AppTheme.spacingS),
           Text(
-            '게임에 참여할 사람들을 추가하세요\n(최소 1명, 최대 10명)',
+            '게임에 참여할 사람들을 추가하세요\n(최소 2명, 최대 10명)',
             style: AppTypography.caption.copyWith(
               color: AppColors.textTertiary,
             ),
@@ -231,10 +231,10 @@ class _GameParticipantsScreenState extends State<GameParticipantsScreen> {
   }
 
   void _proceedToRounds() {
-    if (_participants.isEmpty) {
+    if (_participants.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('최소 1명의 참가자가 필요합니다'),
+          content: Text('최소 2명의 참가자가 필요합니다'),
         ),
       );
       return;

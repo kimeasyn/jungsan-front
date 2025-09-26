@@ -142,8 +142,8 @@ class SettlementCalculator {
   /// 게임의 유효성을 검사합니다.
   static String? validateGame(Game game) {
     // 1. 참가자 수 확인
-    if (game.participants.isEmpty) {
-      return '최소 1명의 참가자가 필요합니다.';
+    if (game.participants.length < 2) {
+      return '최소 2명의 참가자가 필요합니다.';
     }
     if (game.participants.length > 10) {
       return '최대 10명까지만 참가할 수 있습니다.';
